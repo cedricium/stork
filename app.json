@@ -25,6 +25,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4b9cfcd9-f9a8-42a8-9a06-c022a226abd4"
+      }
+    },
+    "owner": "cedricium"
   }
 }
