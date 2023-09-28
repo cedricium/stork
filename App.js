@@ -1,25 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as SQLite from "expo-sqlite";
 
-import Belly from "./components/Belly";
+import Tally from "./components/Tally";
 import Insights from "./components/Insights";
-import Button from "./components/Button";
-
-/**
- * - CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);
- * - INSERT INTO deliveries DEFAULT VALUES;
- * - SELECT * FROM deliveries WHERE DATE(timestamp) = "2023-09-18";
- * - DELETE FROM deliveries;
- *
- * RECENT: SELECT * FROM deliveries ORDER BY timestamp DESC LIMIT 1;
- * GREATEST: SELECT substr(timestamp, 1, 10) AS date, COUNT(*) AS babies FROM deliveries GROUP BY date ORDER BY babies DESC LIMIT 1;
- * BUSIEST: SELECT substr(timestamp, 1, 7) AS month, COUNT(*) AS babies FROM deliveries GROUP BY month ORDER BY babies DESC LIMIT 1;
- * STREAK: ???
- */
+import BirthButtons from "./components/BirthButtons";
+import {
+  calculateGreatestDailyAggregate,
+  calculateBusiestMonth,
+  calculateLatestStreak,
+} from "./utils";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,82 +35,13 @@ function openDatabase() {
   const db = SQLite.openDatabase("db.db");
   db.transaction((tx) => {
     tx.executeSql(
-      "CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);"
+      "CREATE TABLE IF NOT EXISTS deliveries (id INTEGER PRIMARY KEY, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, sex INTEGER NOT NULL);"
     );
   });
   return db;
 }
 
 const db = openDatabase();
-
-function findBusiestMonth(arr) {
-  const months = {};
-  const busiest = { count: 0, month: null };
-
-  for (const date of arr) {
-    const monthStr = date.substring(0, 7);
-    months[monthStr] = months[monthStr] + 1 || 1;
-
-    if (months[monthStr] > busiest.count) {
-      busiest.count = months[monthStr];
-      busiest.month = monthStr;
-    }
-  }
-
-  return busiest;
-}
-
-function findGreatestAggregateDay(arr) {
-  const dateCounts = {};
-  const greatest = { count: 0, date: null };
-
-  for (const isoDate of arr) {
-    const datePart = isoDate.split("T")[0];
-    dateCounts[datePart] = dateCounts[datePart] + 1 || 1;
-
-    if (dateCounts[datePart] > greatest.count) {
-      greatest.count = dateCounts[datePart];
-      greatest.date = datePart;
-    }
-  }
-
-  return greatest;
-}
-
-function aggregateCountsForPast7Days(data) {
-  const currentDate = new Date(); // Get the current date
-  const past7Days = [];
-
-  // Generate an array of the past 7 days (including today) in YYYY-MM-DD format
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(currentDate);
-    date.setDate(currentDate.getDate() - i);
-    const formattedDate = date.toISOString().split("T")[0];
-    past7Days.push(formattedDate);
-  }
-
-  // Create an object to store the counts for each day
-  const counts = {};
-  for (const day of past7Days) {
-    counts[day] = 0;
-  }
-
-  // Count the occurrences for each day in the data
-  for (const item of data) {
-    const itemDate = item.timestamp.split("T")[0];
-    if (counts[itemDate] !== undefined) {
-      counts[itemDate]++;
-    }
-  }
-
-  // Convert counts object to an array of { date, count } objects
-  const result = [];
-  for (const day of past7Days) {
-    result.push({ date: day, count: counts[day] });
-  }
-
-  return result;
-}
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -131,21 +55,21 @@ export default function App() {
   useEffect(
     function fetchDeliveries() {
       db.transaction((tx) => {
-        tx.executeSql("SELECT * FROM deliveries;", [], (_, { rows }) =>
-          setDeliveries(rows._array)
+        tx.executeSql(
+          "SELECT * FROM deliveries ORDER BY timestamp DESC;",
+          [],
+          (_, { rows }) => setDeliveries(rows._array)
         );
       }, null);
     },
     [updateId]
   );
 
-  const recent = deliveries?.[deliveries.length - 1]?.timestamp;
-  const greatest = findGreatestAggregateDay(
-    deliveries.map(({ timestamp }) => timestamp)
-  );
-  const busiest = findBusiestMonth(
-    deliveries.map(({ timestamp }) => timestamp)
-  );
+  const dates = deliveries.map(({ timestamp }) => timestamp);
+  const recent = deliveries?.[0]?.timestamp;
+  const greatest = calculateGreatestDailyAggregate(dates);
+  const busiest = calculateBusiestMonth(dates);
+  const streak = calculateLatestStreak(dates);
 
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded || fontError) {
@@ -157,11 +81,12 @@ export default function App() {
     return null;
   }
 
-  const increment = () => {
+  const increment = (sex) => {
     db.transaction(
       (tx) => {
-        tx.executeSql("INSERT INTO deliveries (timestamp) VALUES(?);", [
+        tx.executeSql("INSERT INTO deliveries (timestamp, sex) VALUES(?, ?);", [
           new Date().toISOString(),
+          sex,
         ]);
       },
       null,
@@ -182,17 +107,50 @@ export default function App() {
   return (
     <View onLayout={onLayoutRootView} style={styles.container}>
       <StatusBar />
-      <Belly deliveries={deliveries} onReset={reset} />
-      <Insights recent={recent} greatest={greatest} busiest={busiest} />
-      <Button onPress={increment} />
+      <Tally deliveries={deliveries} onReset={reset} />
+      <ScrollView style={{ width: "100%", paddingTop: 24 }}>
+        <Section
+          title="Recent Activity"
+          children={<View style={{ height: 120 }} />}
+        />
+        <Section title="Insights">
+          <Insights
+            recent={recent}
+            greatest={greatest}
+            busiest={busiest}
+            streak={streak}
+          />
+        </Section>
+      </ScrollView>
+      <BirthButtons onPress={increment} />
+    </View>
+  );
+}
+
+function Section({ title, children }) {
+  return (
+    <View style={styles.sectionContainer}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  sectionContainer: {
+    gap: 20,
+    width: "100%",
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    color: "#475467",
+    fontFamily: "BricolageGrotesque-Bold",
+    fontSize: 24,
+  },
+
   container: {
     flex: 1,
-    backgroundColor: "#42307D",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "space-between",
   },
@@ -201,5 +159,7 @@ const styles = StyleSheet.create({
     color: "#F4EBFF",
     fontFamily: "BricolageGrotesque-Bold",
     fontSize: 24,
+    height: 29,
+    lineHeight: 29,
   },
 });

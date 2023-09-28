@@ -1,21 +1,24 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
+import { Activity, Calendar, Chevrons, Zap } from "./Icons";
 
 import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
 import relativeTime from "dayjs/plugin/relativeTime";
-dayjs.extend(customParseFormat);
 dayjs.extend(relativeTime);
 
-function Stat({ title, value }) {
+function Stat({ title, icon, value }) {
   return (
     <View style={styles.stat}>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+      <Image source={icon} style={{ width: 24, height: 24 }} />
+
+      <View>
+        <Text style={styles.statTitle}>{title}</Text>
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
     </View>
   );
 }
 
-export default function Insights({ recent, greatest, busiest }) {
+export default function Insights({ recent, greatest, busiest, streak }) {
   const recentStr = recent ? dayjs(recent).fromNow() : "No deliveries yet";
   const greatestStr = greatest?.date
     ? `${greatest?.count} (${dayjs(greatest?.date).format("MMM DD 'YY")})`
@@ -25,53 +28,42 @@ export default function Insights({ recent, greatest, busiest }) {
     : "-";
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Insights</Text>
-
-      <View style={styles.statsContainer}>
-        <Stat title="Most Recent Delivery" value={recentStr} />
-        <Stat title="Most Deliveries in a Day" value={greatestStr} />
-        <Stat title="Busiest Month" value={busiestStr} />
-        <Stat title="Longest Delivery Streak" value="4 Days" />
-      </View>
+    <View style={styles.statsContainer}>
+      <Stat title="Most Recent Delivery" icon={Activity} value={recentStr} />
+      <Stat
+        title="Most Deliveries in a Day"
+        icon={Chevrons}
+        value={greatestStr}
+      />
+      <Stat title="Busiest Month" icon={Calendar} value={busiestStr} />
+      <Stat
+        title="Deliveries Streak"
+        icon={Zap}
+        value={`${streak} ${streak === 1 ? "Day" : "Days"}`}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    display: "flex",
-    gap: 24,
-    width: "100%",
-    paddingHorizontal: 24,
-  },
-
-  title: {
-    color: "#F4EBFF",
-    fontFamily: "BricolageGrotesque-Bold",
-    fontSize: 24,
-  },
-
   statsContainer: {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "flex-start",
-    flexDirection: "row",
+    gap: 10,
+    marginBottom: 160,
   },
   stat: {
-    width: "50%",
-    display: "flex",
-    gap: 4,
-    marginBottom: 24,
+    gap: 20,
+    borderRadius: 8,
+    backgroundColor: "#EAECF0",
+    padding: 10,
   },
   statTitle: {
-    color: "#F2F4F7",
+    color: "#475467",
     fontFamily: "BricolageGrotesque-Regular",
     fontSize: 16,
   },
   statValue: {
-    color: "#D6BBFB",
+    color: "#475467",
     fontFamily: "BricolageGrotesque-Bold",
-    fontSize: 20,
+    fontSize: 24,
   },
 });
